@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>IoT Motion Dashboard</title>
+
+  <!-- PubNub JavaScript SDK -->
+  <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    #log {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      background: #f9f9f9;
+    }
+
+    img {
+      max-width: 640px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>IoT Motion Camera Dashboard</h2>
+
+  <p>
+    This dashboard receives real-time motion events from the IoT device
+    via PubNub.
+  </p>
+
+  <!-- Live stream (optional / added later) -->
+  {% if stream_url != "REPLACE_ME" %}
+    <h3>Live Stream (PIR-gated)</h3>
+    <img id="stream" src="{{ stream_url }}" alt="Live stream">
+  {% endif %}
+
+  <h3>Motion Events</h3>
+  <div id="log">Waiting for motion events...</div>
+
+  <script>
+    const logEl = document.getElementById("log");
+
+    function log(message) {
+      logEl.textContent =
+        `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
+    }
+
+    // PubNub client (keys injected securely by Flask)
+    const pubnub = new PubNub({
+      publishKey: "{{ pub_key }}",
+      subscribeKey: "{{ sub_key }}",
+      uuid: "aws-dashboard",
+      ssl: true
+    });
+
+    pubnub.addListener({
+      message: (event) => {
+        const msg = event.message;
+
+        if (msg.type === "motion") {
+          log(`MOTION detected from ${msg.device} at ${msg.ts}`);
+
+          // If stream exists, force refresh so it reconnects after idle
+          const img = document.getElementById("stream");
+          if (img) {
+            img.src = img.src.split("?")[0] + "?t=" + Date.now();
+          }
+        }
+      }
+    });
+
+    pubnub.subscribe({
+      channels: ["motion-events"]
+    });
+
+    log("Subscribed to PubNub channel: motion-events");
+  </script>
+
+</body>
+</html>
