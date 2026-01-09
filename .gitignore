@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.log
+
+# Virtual environments
+venv/
+.env
+.env.*
+
+# Flask / uploads
+uploads/
+instance/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# SSH / keys
+*.pem
+*.key
+
+# Editor files
+.vscode/
+.idea/
+
+# Systemd / nginx backups
+*.bak
