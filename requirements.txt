@@ -2,3 +2,8 @@ Flask
 gunicorn
 python-dotenv
 pubnub
+flask-login
+flask-sqlalchemy
+pymysql
+cryptography
+
