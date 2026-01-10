@@ -1,61 +1,115 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>IoT Motion Dashboard</title>
+{% extends "base.html" %}
+{% set title = "Dashboard" %}
 
-  <!-- PubNub JavaScript SDK -->
+{% block content %}
+  <div class="d-flex align-items-end justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">Dashboard</h1>
+      <div class="muted">Real-time motion/snapshot events from the Pi via PubNub.</div>
+    </div>
+    <div class="text-end">
+      <div class="small muted">Channel: <span class="mono">motion-events</span></div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Latest Snapshot -->
+    <div class="col-12 col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h5 mb-0">Latest Snapshot</h2>
+            <span class="badge text-bg-success">Live</span>
+          </div>
+
+          {% if latest_image %}
+            <img id="latestImg" class="img-fluid rounded snap border" src="/static/uploads/{{ latest_image }}" alt="Latest snapshot">
+            <div class="small muted mt-2">Updates automatically when a new snapshot is uploaded.</div>
+          {% else %}
+            <div class="alert alert-secondary mb-0">No snapshots yet. Trigger the PIR sensor to capture one.</div>
+            <img id="latestImg" src="" alt="Latest snapshot" style="display:none;">
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Log -->
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-body">
+          <h2 class="h5">Live Log</h2>
+          <div id="log" class="log-box mono">Waiting for events...</div>
+          <div class="small muted mt-2">Shows PubNub messages in real time.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Events -->
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h5 mb-0">Recent Events</h2>
+            <span class="small muted">Showing latest 20</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr class="text-secondary">
+                  <th style="width: 220px;">Time (UTC)</th>
+                  <th style="width: 140px;">Device</th>
+                  <th>File</th>
+                </tr>
+              </thead>
+              <tbody id="eventsBody">
+                {% for e in events %}
+                  <tr>
+                    <td class="mono">{{ e.created_at }}</td>
+                    <td>{{ e.device }}</td>
+                    <td>
+                      <a class="mono" href="/static/uploads/{{ e.image_filename }}" target="_blank">
+                        {{ e.image_filename }}
+                      </a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PubNub -->
   <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-
-    #log {
-      border: 1px solid #ccc;
-      padding: 10px;
-      height: 220px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      background: #f9f9f9;
-    }
-
-    img {
-      max-width: 640px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-    }
-  </style>
-</head>
-<body>
-
-  <h2>IoT Motion Camera Dashboard</h2>
-  <p>Logged in as {{ username }} | <a href="/logout">Logout</a></p>
-  <p>
-    This dashboard receives real-time motion events from the IoT device
-    via PubNub.
-  </p>
-
-  <!-- Live stream (optional / added later) -->
-  {% if stream_url != "REPLACE_ME" %}
-    <h3>Live Stream (PIR-gated)</h3>
-    <img id="stream" src="{{ stream_url }}" alt="Live stream">
-  {% endif %}
-
-  <h3>Motion Events</h3>
-  <div id="log">Waiting for motion events...</div>
-
   <script>
     const logEl = document.getElementById("log");
+    const latestImg = document.getElementById("latestImg");
+    const eventsBody = document.getElementById("eventsBody");
 
     function log(message) {
-      logEl.textContent =
-        `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
+      logEl.textContent = `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
     }
 
-    // PubNub client (keys injected securely by Flask)
+    function addRow(ts, device, filename) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono">${ts}</td>
+        <td>${device}</td>
+        <td><a class="mono" href="/static/uploads/${filename}" target="_blank">${filename}</a></td>
+      `;
+      eventsBody.prepend(tr);
+    }
+
+    function showSnapshot(filename) {
+      if (!latestImg) return;
+      latestImg.style.display = "block";
+      latestImg.src = `/static/uploads/${filename}?t=${Date.now()}`;
+    }
+
     const pubnub = new PubNub({
       publishKey: "{{ pub_key }}",
       subscribeKey: "{{ sub_key }}",
@@ -65,26 +119,29 @@
 
     pubnub.addListener({
       message: (event) => {
-        const msg = event.message;
+        const msg = event.message || {};
+        const type = (msg.type || "").toLowerCase();
 
-        if (msg.type === "motion") {
-          log(`MOTION detected from ${msg.device} at ${msg.ts}`);
+        if (type === "snapshot" && msg.filename) {
+          const ts = new Date().toISOString();
+          const device = msg.device || "unknown";
 
-          // If stream exists, force refresh so it reconnects after idle
-          const img = document.getElementById("stream");
-          if (img) {
-            img.src = img.src.split("?")[0] + "?t=" + Date.now();
-          }
+          log(`SNAPSHOT uploaded from ${device}: ${msg.filename}`);
+          showSnapshot(msg.filename);
+          addRow(ts, device, msg.filename);
+          return;
         }
+
+        if (type === "motion") {
+          log(`MOTION detected from ${msg.device || "unknown"} at ${msg.ts || "unknown time"}`);
+          return;
+        }
+
+        log(`EVENT: ${JSON.stringify(msg)}`);
       }
     });
 
-    pubnub.subscribe({
-      channels: ["motion-events"]
-    });
-
+    pubnub.subscribe({ channels: ["motion-events"] });
     log("Subscribed to PubNub channel: motion-events");
   </script>
-
-</body>
-</html>
+{% endblock %}

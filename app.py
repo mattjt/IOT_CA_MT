@@ -8,8 +8,25 @@ from flask import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
+from werkzeug.utils import secure_filename
+
 
 load_dotenv()
+
+UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN")
+if not UPLOAD_TOKEN:
+    raise RuntimeError("Missing UPLOAD_TOKEN")
+
+app = Flask(__name__)
+
+UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+ALLOWED_EXTS = {"jpg", "jpeg"}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 PUB_KEY = os.environ.get("PUBNUB_PUB_KEY")
 SUB_KEY = os.environ.get("PUBNUB_SUB_KEY")
@@ -25,7 +42,6 @@ if not SECRET_KEY:
 if not DATABASE_URL:
     raise RuntimeError("Missing DATABASE_URL")
 
-app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -45,6 +61,14 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
+class MotionEvent(db.Model):
+    __tablename__ = "motion_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    device = db.Column(db.String(80), nullable=False)
+    image_filename = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
+
 
 with app.app_context():
     db.create_all()
@@ -62,12 +86,18 @@ def login_required(view):
 @app.route("/")
 @login_required
 def dashboard():
+    events = MotionEvent.query.order_by(MotionEvent.id.desc()).limit(20).all()
+    latest = events[0].image_filename if events else None
+
     return render_template(
         "dashboard.html",
         pub_key=PUB_KEY,
         sub_key=SUB_KEY,
         username=session.get("username"),
+        events=events,
+        latest_image=latest,
     )
+
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -124,3 +154,42 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+def allowed_file(filename: str) -> bool:
+    if "." not in filename:
+        return False
+    ext = filename.rsplit(".", 1)[1].lower()
+    return ext in ALLOWED_EXTS
+
+@app.post("/api/upload")
+def api_upload():
+    token = request.headers.get("X-Upload-Token", "")
+    if token != UPLOAD_TOKEN:
+        return {"error": "unauthorized"}, 401
+
+    if "image" not in request.files:
+        return {"error": "missing_file"}, 400
+
+    image = request.files["image"]
+    device = request.form.get("device", "pi").strip() or "pi"
+
+    if image.filename == "":
+        return {"error": "empty_filename"}, 400
+
+    if not allowed_file(image.filename):
+        return {"error": "invalid_file_type"}, 400
+
+    # Make a safe unique filename
+    safe_name = secure_filename(image.filename)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    final_name = f"{device}_{ts}.jpg"
+    save_path = os.path.join(UPLOAD_DIR, final_name)
+
+    image.save(save_path)
+
+    ev = MotionEvent(device=device, image_filename=final_name)
+    db.session.add(ev)
+    db.session.commit()
+
+    return {"ok": True, "filename": final_name}, 200
+

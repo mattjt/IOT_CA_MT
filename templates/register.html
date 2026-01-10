@@ -1,8 +1,49 @@
-<h2>Register</h2>
-<form method="post">
-  <input name="username" placeholder="Username" required>
-  <input type="password" name="password" placeholder="Password" required>
-  <input type="password" name="confirm" placeholder="Confirm Password" required>
-  <button type="submit">Register</button>
-</form>
-<p><a href="/login">Back to login</a></p>
+<!-- templates/register.html -->
+{% extends "base.html" %}
+{% set title = "Register" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-6 col-lg-5">
+    <div class="card">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-1">Create account</h1>
+        <p class="muted mb-4">Register to view your IoT motion dashboard.</p>
+
+        {% if error %}
+          <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        {% if success %}
+          <div class="alert alert-success">{{ success }}</div>
+        {% endif %}
+
+        <form method="post" action="/register" autocomplete="on">
+          <div class="mb-3">
+            <label class="form-label" for="username">Username</label>
+            <input class="form-control" id="usename" name="username" type="username" required autofocus>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control" id="password" name="password" type="password" required minlength="8">
+            <div class="form-text">Use at least 8 characters.</div>
+          </div>
+
+          <button class="btn btn-primary w-100" type="submit">Register</button>
+        </form>
+
+        <div class="text-center mt-3">
+          <span class="muted">Already have an account?</span>
+          <a href="/login">Sign in</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center small muted mt-3">
+      Passwords are hashed before being stored in the database.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
