@@ -11,6 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
+from pubnub.pnconfiguration import PNConfiguration
+from pubnub.pubnub import PubNub
 
 load_dotenv()
 
@@ -41,6 +43,13 @@ if not SECRET_KEY:
 
 if not DATABASE_URL:
     raise RuntimeError("Missing DATABASE_URL")
+
+pnconfig = PNConfiguration()
+pnconfig.publish_key = PUB_KEY
+pnconfig.subscribe_key = SUB_KEY
+pnconfig.uuid = "aws-server"
+pnconfig.ssl = True
+pubnub = PubNub(pnconfig)
 
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
@@ -98,6 +107,16 @@ def dashboard():
         latest_image=latest,
     )
 
+@app.post("/api/device/toggle")
+@login_required
+def toggle_device():
+    enabled = request.json.get("enabled", None)
+    if enabled is None:
+        return {"error": "enabled_required"}, 400
+
+    msg = {"type": "set_enabled", "enabled": bool(enabled), "ts": datetime.utcnow().isoformat() + "Z"}
+    pubnub.publish().channel("device-control").message(msg).sync()
+    return {"ok": True, "sent": msg}, 200
 
 
 @app.route("/register", methods=["GET", "POST"])

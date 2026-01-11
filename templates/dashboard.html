@@ -2,146 +2,201 @@
 {% set title = "Dashboard" %}
 
 {% block content %}
-  <div class="d-flex align-items-end justify-content-between mb-3">
-    <div>
-      <h1 class="h3 mb-1">Dashboard</h1>
-      <div class="muted">Real-time motion/snapshot events from the Pi via PubNub.</div>
-    </div>
-    <div class="text-end">
-      <div class="small muted">Channel: <span class="mono">motion-events</span></div>
+<div class="d-flex align-items-end justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Dashboard</h1>
+    <div class="muted">Two-way control (Flask → PubNub → Pi) + snapshot events.</div>
+  </div>
+
+  <div class="text-end">
+    <div class="small muted">Device status: <span id="devStatus" class="badge text-bg-secondary">Unknown</span></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Controls -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body d-flex flex-wrap align-items-center gap-2 justify-content-between">
+        <div>
+          <div class="fw-semibold">Camera / Motion Detection</div>
+          <div class="small muted">Enable/disable the Pi capturing snapshots on motion.</div>
+        </div>
+
+        <div class="d-flex gap-2 align-items-center">
+          <button id="btnEnable" class="btn btn-success btn-sm">Enable</button>
+          <button id="btnDisable" class="btn btn-danger btn-sm">Disable</button>
+          <span class="small muted">Channel: <span class="mono">device-control</span></span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="row g-3">
-    <!-- Latest Snapshot -->
-    <div class="col-12 col-lg-7">
-      <div class="card">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <h2 class="h5 mb-0">Latest Snapshot</h2>
-            <span class="badge text-bg-success">Live</span>
-          </div>
+  <!-- Latest Snapshot -->
+  <div class="col-12 col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">Latest Snapshot</h2>
+          <span class="badge text-bg-success">Live</span>
+        </div>
 
-          {% if latest_image %}
-            <img id="latestImg" class="img-fluid rounded snap border" src="/static/uploads/{{ latest_image }}" alt="Latest snapshot">
-            <div class="small muted mt-2">Updates automatically when a new snapshot is uploaded.</div>
-          {% else %}
-            <div class="alert alert-secondary mb-0">No snapshots yet. Trigger the PIR sensor to capture one.</div>
-            <img id="latestImg" src="" alt="Latest snapshot" style="display:none;">
-          {% endif %}
+        {% if latest_image %}
+          <img id="latestImg" class="img-fluid rounded snap border" src="/static/uploads/{{ latest_image }}" alt="Latest snapshot">
+          <div class="small muted mt-2">Updates automatically when a new snapshot arrives.</div>
+        {% else %}
+          <div class="alert alert-secondary mb-0">No snapshots yet. Trigger PIR to capture one.</div>
+          <img id="latestImg" src="" alt="Latest snapshot" style="display:none;">
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Log -->
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h5">Live Log</h2>
+        <div id="log" class="log-box mono">Waiting for events...</div>
+        <div class="small muted mt-2">
+          Listening on <span class="mono">motion-events</span> and <span class="mono">device-status</span>.
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Live Log -->
-    <div class="col-12 col-lg-5">
-      <div class="card h-100">
-        <div class="card-body">
-          <h2 class="h5">Live Log</h2>
-          <div id="log" class="log-box mono">Waiting for events...</div>
-          <div class="small muted mt-2">Shows PubNub messages in real time.</div>
+  <!-- Recent Events -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h2 class="h5 mb-0">Recent Events</h2>
+          <span class="small muted">Showing latest 20</span>
         </div>
-      </div>
-    </div>
 
-    <!-- Recent Events -->
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <h2 class="h5 mb-0">Recent Events</h2>
-            <span class="small muted">Showing latest 20</span>
-          </div>
-
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead>
-                <tr class="text-secondary">
-                  <th style="width: 220px;">Time (UTC)</th>
-                  <th style="width: 140px;">Device</th>
-                  <th>File</th>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr class="text-secondary">
+                <th style="width: 220px;">Time (UTC)</th>
+                <th style="width: 140px;">Device</th>
+                <th>File</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody">
+              {% for e in events %}
+                <tr>
+                  <td class="mono">{{ e.created_at }}</td>
+                  <td>{{ e.device }}</td>
+                  <td>
+                    <a class="mono" href="/static/uploads/{{ e.image_filename }}" target="_blank">
+                      {{ e.image_filename }}
+                    </a>
+                  </td>
                 </tr>
-              </thead>
-              <tbody id="eventsBody">
-                {% for e in events %}
-                  <tr>
-                    <td class="mono">{{ e.created_at }}</td>
-                    <td>{{ e.device }}</td>
-                    <td>
-                      <a class="mono" href="/static/uploads/{{ e.image_filename }}" target="_blank">
-                        {{ e.image_filename }}
-                      </a>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- PubNub -->
-  <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
-  <script>
-    const logEl = document.getElementById("log");
-    const latestImg = document.getElementById("latestImg");
-    const eventsBody = document.getElementById("eventsBody");
+<script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
+<script>
+  const logEl = document.getElementById("log");
+  const latestImg = document.getElementById("latestImg");
+  const eventsBody = document.getElementById("eventsBody");
+  const devStatus = document.getElementById("devStatus");
 
-    function log(message) {
-      logEl.textContent = `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
-    }
+  function log(message) {
+    logEl.textContent = `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
+  }
 
-    function addRow(ts, device, filename) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="mono">${ts}</td>
-        <td>${device}</td>
-        <td><a class="mono" href="/static/uploads/${filename}" target="_blank">${filename}</a></td>
-      `;
-      eventsBody.prepend(tr);
-    }
+  function setStatusBadge(text, kind) {
+    devStatus.textContent = text;
+    devStatus.className = `badge ${kind}`;
+  }
 
-    function showSnapshot(filename) {
-      if (!latestImg) return;
-      latestImg.style.display = "block";
-      latestImg.src = `/static/uploads/${filename}?t=${Date.now()}`;
-    }
+  function addRow(ts, device, filename) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="mono">${ts}</td>
+      <td>${device}</td>
+      <td><a class="mono" href="/static/uploads/${filename}" target="_blank">${filename}</a></td>
+    `;
+    eventsBody.prepend(tr);
+  }
 
-    const pubnub = new PubNub({
-      publishKey: "{{ pub_key }}",
-      subscribeKey: "{{ sub_key }}",
-      uuid: "aws-dashboard",
-      ssl: true
+  function showSnapshot(filename) {
+    if (!latestImg) return;
+    latestImg.style.display = "block";
+    latestImg.src = `/static/uploads/${filename}?t=${Date.now()}`;
+  }
+
+  async function sendToggle(enabled) {
+    const r = await fetch("/api/device/toggle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled })
     });
 
-    pubnub.addListener({
-      message: (event) => {
-        const msg = event.message || {};
-        const type = (msg.type || "").toLowerCase();
+    if (!r.ok) {
+      const t = await r.text();
+      log(`ERROR toggling device: ${r.status} ${t}`);
+      return;
+    }
+    log(`Sent command: enabled=${enabled}`);
+  }
 
-        if (type === "snapshot" && msg.filename) {
-          const ts = new Date().toISOString();
-          const device = msg.device || "unknown";
+  document.getElementById("btnEnable").addEventListener("click", () => sendToggle(true));
+  document.getElementById("btnDisable").addEventListener("click", () => sendToggle(false));
 
-          log(`SNAPSHOT uploaded from ${device}: ${msg.filename}`);
-          showSnapshot(msg.filename);
-          addRow(ts, device, msg.filename);
-          return;
-        }
+  const pubnub = new PubNub({
+    publishKey: "{{ pub_key }}",
+    subscribeKey: "{{ sub_key }}",
+    uuid: "aws-dashboard",
+    ssl: true
+  });
 
-        if (type === "motion") {
-          log(`MOTION detected from ${msg.device || "unknown"} at ${msg.ts || "unknown time"}`);
-          return;
-        }
+  pubnub.addListener({
+    message: (event) => {
+      const msg = event.message || {};
+      const type = (msg.type || "").toLowerCase();
 
-        log(`EVENT: ${JSON.stringify(msg)}`);
+      if (type === "snapshot" && msg.filename) {
+        const ts = new Date().toISOString();
+        const device = msg.device || "unknown";
+        log(`SNAPSHOT from ${device}: ${msg.filename}`);
+        showSnapshot(msg.filename);
+        addRow(ts, device, msg.filename);
+        return;
       }
-    });
 
-    pubnub.subscribe({ channels: ["motion-events"] });
-    log("Subscribed to PubNub channel: motion-events");
-  </script>
+      if (type === "device_status") {
+        const enabled = msg.enabled === true;
+        const device = msg.device || "pi";
+        const connected = msg.connected === true;
+
+        if (connected && enabled) setStatusBadge(`${device}: Enabled`, "text-bg-success");
+        else if (connected && !enabled) setStatusBadge(`${device}: Disabled`, "text-bg-danger");
+        else setStatusBadge(`${device}: Offline`, "text-bg-secondary");
+
+        log(`STATUS ${device}: connected=${connected} enabled=${enabled}`);
+        return;
+      }
+
+      if (type === "motion") {
+        log(`MOTION from ${msg.device || "unknown"} at ${msg.ts || "unknown time"}`);
+        return;
+      }
+
+      log(`EVENT: ${JSON.stringify(msg)}`);
+    }
+  });
+
+  pubnub.subscribe({ channels: ["motion-events", "device-status"] });
+  log("Subscribed to: motion-events, device-status");
+</script>
 {% endblock %}
