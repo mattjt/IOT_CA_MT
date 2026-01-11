@@ -198,7 +198,6 @@ def api_upload():
     if not allowed_file(image.filename):
         return {"error": "invalid_file_type"}, 400
 
-    # Make a safe unique filename
     safe_name = secure_filename(image.filename)
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
     final_name = f"{device}_{ts}.jpg"
@@ -209,6 +208,19 @@ def api_upload():
     ev = MotionEvent(device=device, image_filename=final_name)
     db.session.add(ev)
     db.session.commit()
+
+    
+    msg = {
+        "type": "snapshot",
+        "device": device,
+        "filename": final_name,
+        "ts": datetime.utcnow().isoformat() + "Z"
+    }
+    try:
+        pubnub.publish().channel("motion-events").message(msg).sync()
+    except Exception as e:
+        
+        print("PubNub publish failed:", e)
 
     return {"ok": True, "filename": final_name}, 200
 

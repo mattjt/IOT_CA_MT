@@ -1,202 +1,327 @@
 {% extends "base.html" %}
-{% set title = "Dashboard" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+  <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
+{% endblock %}
+
+{% block topbar %}
+  <div class="topbar">
+    <div class="brand">
+      <h1>Motion Camera Dashboard</h1>
+      <p>Latest Snapshots from Raspberry Pi</p>
+    </div>
+
+    <div class="userbar">
+      <span class="pill">
+        <span class="dot green" id="statusDot"></span>
+        <span id="statusText">Connected</span>
+      </span>
+
+      <span class="pill">
+        Logged in as <strong style="color:rgba(255,255,255,.92)">{{ username }}</strong>
+      </span>
+
+      <a class="btn danger" href="/logout">Logout</a>
+    </div>
+  </div>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-end justify-content-between mb-3">
-  <div>
-    <h1 class="h3 mb-1">Dashboard</h1>
-    <div class="muted">Two-way control (Flask → PubNub → Pi) + snapshot events.</div>
-  </div>
+  <div class="grid">
+    <!-- Camera -->
+    <div class="card" id="cameraCard">
+      <div class="card-h">
+        <h2>Camera Control</h2>
+        <span class="pill">
+          <span class="dot amber" id="deviceDot"></span>
+          <span id="deviceText">Device status: unknown</span>
+        </span>
+      </div>
 
-  <div class="text-end">
-    <div class="small muted">Device status: <span id="devStatus" class="badge text-bg-secondary">Unknown</span></div>
-  </div>
-</div>
-
-<div class="row g-3">
-  <!-- Controls -->
-  <div class="col-12">
-    <div class="card">
-      <div class="card-body d-flex flex-wrap align-items-center gap-2 justify-content-between">
-        <div>
-          <div class="fw-semibold">Camera / Motion Detection</div>
-          <div class="small muted">Enable/disable the Pi capturing snapshots on motion.</div>
+      <div class="card-b">
+        <div class="kpi" style="margin-bottom:10px;">
+          <button class="btn primary" id="btnEnable" type="button">Enable</button>
+          <button class="btn danger" id="btnDisable" type="button">Disable</button>
         </div>
 
-        <div class="d-flex gap-2 align-items-center">
-          <button id="btnEnable" class="btn btn-success btn-sm">Enable</button>
-          <button id="btnDisable" class="btn btn-danger btn-sm">Disable</button>
-          <span class="small muted">Channel: <span class="mono">device-control</span></span>
+        <div class="snapshot-wrap">
+          {% if latest_image %}
+            <img id="latestSnapshot"
+                 src="{{ url_for('static', filename='uploads/' ~ latest_image) }}"
+                 alt="Latest snapshot">
+          {% else %}
+            <img id="latestSnapshot" src="" alt="Latest snapshot" style="display:none;">
+            <div style="padding:16px;color:var(--muted);">
+              No snapshots yet. Trigger the PIR sensor to capture one.
+            </div>
+          {% endif %}
+
+          <div class="snapshot-meta">
+            <span id="snapMetaLeft" class="muted">
+              {% if latest_image %}{{ latest_image }}{% else %}Waiting for snapshot…{% endif %}
+            </span>
+            <span class="muted">Updates live.</span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Latest Snapshot -->
-  <div class="col-12 col-lg-7">
-    <div class="card">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">Latest Snapshot</h2>
-          <span class="badge text-bg-success">Live</span>
-        </div>
-
-        {% if latest_image %}
-          <img id="latestImg" class="img-fluid rounded snap border" src="/static/uploads/{{ latest_image }}" alt="Latest snapshot">
-          <div class="small muted mt-2">Updates automatically when a new snapshot arrives.</div>
-        {% else %}
-          <div class="alert alert-secondary mb-0">No snapshots yet. Trigger PIR to capture one.</div>
-          <img id="latestImg" src="" alt="Latest snapshot" style="display:none;">
-        {% endif %}
+    <!-- Recent Events -->
+    <div class="card" id="eventsCard">
+      <div class="card-h">
+        <h2>Recent Events</h2>
+        <span class="pill" id="eventCountPill">—</span>
       </div>
-    </div>
-  </div>
 
-  <!-- Live Log -->
-  <div class="col-12 col-lg-5">
-    <div class="card h-100">
-      <div class="card-body">
-        <h2 class="h5">Live Log</h2>
-        <div id="log" class="log-box mono">Waiting for events...</div>
-        <div class="small muted mt-2">
-          Listening on <span class="mono">motion-events</span> and <span class="mono">device-status</span>.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Recent Events -->
-  <div class="col-12">
-    <div class="card">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h2 class="h5 mb-0">Recent Events</h2>
-          <span class="small muted">Showing latest 20</span>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr class="text-secondary">
-                <th style="width: 220px;">Time (UTC)</th>
-                <th style="width: 140px;">Device</th>
-                <th>File</th>
-              </tr>
-            </thead>
-            <tbody id="eventsBody">
+      <div class="card-b">
+        <div id="recentScroll">
+          <ul class="list" id="recentList" style="margin:0;">
+            {% if events %}
               {% for e in events %}
-                <tr>
-                  <td class="mono">{{ e.created_at }}</td>
-                  <td>{{ e.device }}</td>
-                  <td>
-                    <a class="mono" href="/static/uploads/{{ e.image_filename }}" target="_blank">
-                      {{ e.image_filename }}
-                    </a>
-                  </td>
-                </tr>
+                <li>
+                  <div class="left">
+                    <div class="title">SNAPSHOT — {{ e.device }}</div>
+                    <div class="sub">{{ e.created_at }} — {{ e.image_filename }}</div>
+                  </div>
+                  <div class="right">
+                    <a class="btn"
+                       href="{{ url_for('static', filename='uploads/' ~ e.image_filename) }}"
+                       target="_blank" rel="noopener">Open</a>
+                  </div>
+                </li>
               {% endfor %}
-            </tbody>
-          </table>
+            {% else %}
+              <li id="noEventsRow">
+                <div class="left">
+                  <div class="title">No events yet</div>
+                  <div class="sub">Trigger motion to generate snapshots.</div>
+                </div>
+              </li>
+            {% endif %}
+          </ul>
         </div>
       </div>
     </div>
+
+    <!-- Live Log -->
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-h">
+        <h2>Live Log</h2>
+        <span class="pill">
+          PubNub: <strong style="color:rgba(255,255,255,.92)">motion-events</strong>
+        </span>
+      </div>
+
+      <div class="card-b">
+        <div class="log" id="log">Waiting for events…</div>
+      </div>
+    </div>
   </div>
-</div>
 
-<script src="https://cdn.pubnub.com/sdk/javascript/pubnub.8.2.8.min.js"></script>
-<script>
-  const logEl = document.getElementById("log");
-  const latestImg = document.getElementById("latestImg");
-  const eventsBody = document.getElementById("eventsBody");
-  const devStatus = document.getElementById("devStatus");
+  <script>
+    // Elements
+    const logEl = document.getElementById("log");
+    const snapEl = document.getElementById("latestSnapshot");
+    const snapMetaLeft = document.getElementById("snapMetaLeft");
 
-  function log(message) {
-    logEl.textContent = `${new Date().toISOString()}  ${message}\n` + logEl.textContent;
-  }
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
 
-  function setStatusBadge(text, kind) {
-    devStatus.textContent = text;
-    devStatus.className = `badge ${kind}`;
-  }
+    const deviceDot = document.getElementById("deviceDot");
+    const deviceText = document.getElementById("deviceText");
 
-  function addRow(ts, device, filename) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="mono">${ts}</td>
-      <td>${device}</td>
-      <td><a class="mono" href="/static/uploads/${filename}" target="_blank">${filename}</a></td>
-    `;
-    eventsBody.prepend(tr);
-  }
+    const recentList = document.getElementById("recentList");
+    const eventCountPill = document.getElementById("eventCountPill");
+    const recentScroll = document.getElementById("recentScroll");
 
-  function showSnapshot(filename) {
-    if (!latestImg) return;
-    latestImg.style.display = "block";
-    latestImg.src = `/static/uploads/${filename}?t=${Date.now()}`;
-  }
+    
+    const MAX_EVENTS = 10;
 
-  async function sendToggle(enabled) {
-    const r = await fetch("/api/device/toggle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled })
+    
+    let totalEvents = parseInt("{{ events|length }}", 10) || 0;
+
+    function prependLog(line) {
+      const ts = new Date().toISOString();
+      logEl.textContent = `${ts}  ${line}\n` + logEl.textContent;
+    }
+
+    function setConnected(ok) {
+      statusDot.classList.remove("green", "red", "amber");
+      statusDot.classList.add(ok ? "green" : "red");
+      statusText.textContent = ok ? "Connected" : "Disconnected";
+    }
+
+    function setDeviceState(state) {
+      deviceDot.classList.remove("green", "red", "amber");
+      if (state === "enabled") deviceDot.classList.add("green");
+      else if (state === "disabled") deviceDot.classList.add("red");
+      else deviceDot.classList.add("amber");
+
+      deviceText.textContent = "Device status: " + state;
+    }
+
+    
+    function flashActivity() {
+      if (!statusDot) return;
+      statusDot.classList.remove("green", "red");
+      statusDot.classList.add("amber");
+      setTimeout(() => {
+        statusDot.classList.remove("amber");
+        statusDot.classList.add("green");
+      }, 400);
+    }
+
+    async function sendToggle(enabled) {
+      try {
+        const res = await fetch("/api/device/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled })
+        });
+
+        if (!res.ok) {
+          prependLog(`ERROR: toggle failed (${res.status})`);
+          return;
+        }
+
+        prependLog(`CONTROL: sent enabled=${enabled}`);
+        setDeviceState(enabled ? "enabled" : "disabled");
+      } catch (e) {
+        prependLog("ERROR: toggle request failed");
+        setConnected(false);
+      }
+    }
+
+    document.getElementById("btnEnable").addEventListener("click", () => sendToggle(true));
+    document.getElementById("btnDisable").addEventListener("click", () => sendToggle(false));
+
+    
+    function syncHeights() {
+      const cameraCard = document.getElementById("cameraCard");
+      if (!cameraCard || !recentScroll) return;
+
+      const camBody = cameraCard.querySelector(".card-b");
+      if (!camBody) return;
+
+      const target = camBody.getBoundingClientRect().height;
+      recentScroll.style.maxHeight = (target - 6) + "px";
+    }
+
+    
+    function trimRecentEvents() {
+      if (!recentList) return;
+
+      const items = recentList.querySelectorAll("li");
+      if (items.length > MAX_EVENTS) {
+        for (let i = MAX_EVENTS; i < items.length; i++) {
+          items[i].remove();
+        }
+      }
+
+      
+      const showing = Math.min(items.length, MAX_EVENTS);
+      if (eventCountPill) eventCountPill.textContent = `Showing ${showing} / ${totalEvents}`;
+    }
+
+    window.addEventListener("load", () => {
+      syncHeights();
+      trimRecentEvents();
+    });
+    window.addEventListener("resize", syncHeights);
+
+    
+    function prependRecentEvent(device, filename, tsIso) {
+      const noRow = document.getElementById("noEventsRow");
+      if (noRow) noRow.remove();
+
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <div class="left">
+          <div class="title">SNAPSHOT — ${device}</div>
+          <div class="sub">${tsIso || ""} — ${filename}</div>
+        </div>
+        <div class="right">
+          <a class="btn" href="/static/uploads/${filename}" target="_blank" rel="noopener">Open</a>
+        </div>
+      `;
+
+      recentList.prepend(li);
+
+      totalEvents += 1;
+      trimRecentEvents();
+
+      if (recentScroll) recentScroll.scrollTop = 0;
+    }
+
+    // PubNub
+    const pubnub = new PubNub({
+      publishKey: "{{ pub_key }}",
+      subscribeKey: "{{ sub_key }}",
+      uuid: "aws-dashboard",
+      ssl: true
     });
 
-    if (!r.ok) {
-      const t = await r.text();
-      log(`ERROR toggling device: ${r.status} ${t}`);
-      return;
-    }
-    log(`Sent command: enabled=${enabled}`);
-  }
+    pubnub.addListener({
+      status: (s) => {
+        if (s.category && ("" + s.category).toLowerCase().includes("connected")) {
+          setConnected(true);
+          prependLog("PubNub connected");
+        }
+        if (s.error) {
+          setConnected(false);
+          prependLog("PubNub error: " + (s.errorData?.message || "unknown"));
+        }
+      },
 
-  document.getElementById("btnEnable").addEventListener("click", () => sendToggle(true));
-  document.getElementById("btnDisable").addEventListener("click", () => sendToggle(false));
+      message: (event) => {
+        const msg = event.message || {};
+        const type = (msg.type || "").toLowerCase();
 
-  const pubnub = new PubNub({
-    publishKey: "{{ pub_key }}",
-    subscribeKey: "{{ sub_key }}",
-    uuid: "aws-dashboard",
-    ssl: true
-  });
+        flashActivity();
 
-  pubnub.addListener({
-    message: (event) => {
-      const msg = event.message || {};
-      const type = (msg.type || "").toLowerCase();
+        if (type === "motion") {
+          prependLog(`MOTION: ${msg.device || "device"} at ${msg.ts || ""}`);
+          return;
+        }
 
-      if (type === "snapshot" && msg.filename) {
-        const ts = new Date().toISOString();
-        const device = msg.device || "unknown";
-        log(`SNAPSHOT from ${device}: ${msg.filename}`);
-        showSnapshot(msg.filename);
-        addRow(ts, device, msg.filename);
-        return;
+        if (type === "snapshot") {
+          const filename = msg.filename || "";
+          const device = msg.device || "device";
+          const tsIso = msg.ts || "";
+
+          prependLog(`SNAPSHOT: ${device} -> ${filename}`);
+
+          if (filename && snapEl) {
+            const url = `/static/uploads/${filename}?t=${Date.now()}`;
+            snapEl.style.display = "block";
+            snapEl.src = url;
+            if (snapMetaLeft) snapMetaLeft.textContent = filename;
+          }
+
+          if (filename) {
+            prependRecentEvent(device, filename, tsIso);
+          }
+
+          syncHeights();
+          return;
+        }
+
+        if (type === "device_status") {
+          const enabled = msg.enabled === true;
+          setDeviceState(enabled ? "enabled" : "disabled");
+          prependLog(`STATUS: ${msg.device || "pi"} enabled=${enabled}`);
+          return;
+        }
+
+        prependLog(`EVENT: ${JSON.stringify(msg)}`);
       }
+    });
 
-      if (type === "device_status") {
-        const enabled = msg.enabled === true;
-        const device = msg.device || "pi";
-        const connected = msg.connected === true;
-
-        if (connected && enabled) setStatusBadge(`${device}: Enabled`, "text-bg-success");
-        else if (connected && !enabled) setStatusBadge(`${device}: Disabled`, "text-bg-danger");
-        else setStatusBadge(`${device}: Offline`, "text-bg-secondary");
-
-        log(`STATUS ${device}: connected=${connected} enabled=${enabled}`);
-        return;
-      }
-
-      if (type === "motion") {
-        log(`MOTION from ${msg.device || "unknown"} at ${msg.ts || "unknown time"}`);
-        return;
-      }
-
-      log(`EVENT: ${JSON.stringify(msg)}`);
-    }
-  });
-
-  pubnub.subscribe({ channels: ["motion-events", "device-status"] });
-  log("Subscribed to: motion-events, device-status");
-</script>
+    pubnub.subscribe({ channels: ["motion-events", "device-status"] });
+    prependLog("Subscribed to: motion-events, device-status");
+    setDeviceState("unknown");
+    setConnected(true);
+  </script>
 {% endblock %}
+

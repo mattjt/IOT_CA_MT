@@ -1,49 +1,45 @@
-<!-- templates/register.html -->
 {% extends "base.html" %}
-{% set title = "Register" %}
+{% block title %}Login | IoT Motion Camera{% endblock %}
 
-{% block content %}
-<div class="row justify-content-center">
-  <div class="col-12 col-md-6 col-lg-5">
-    <div class="card">
-      <div class="card-body p-4">
-        <h1 class="h4 mb-1">Create account</h1>
-        <p class="muted mb-4">Register to view your IoT motion dashboard.</p>
-
-        {% if error %}
-          <div class="alert alert-danger">{{ error }}</div>
-        {% endif %}
-
-        {% if success %}
-          <div class="alert alert-success">{{ success }}</div>
-        {% endif %}
-
-        <form method="post" action="/register" autocomplete="on">
-          <div class="mb-3">
-            <label class="form-label" for="username">Username</label>
-            <input class="form-control" id="usename" name="username" type="username" required autofocus>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="password">Password</label>
-            <input class="form-control" id="password" name="password" type="password" required minlength="8">
-            <div class="form-text">Use at least 8 characters.</div>
-          </div>
-
-          <button class="btn btn-primary w-100" type="submit">Register</button>
-        </form>
-
-        <div class="text-center mt-3">
-          <span class="muted">Already have an account?</span>
-          <a href="/login">Sign in</a>
-        </div>
-      </div>
+{% block topbar %}
+  <div class="topbar">
+    <div class="brand">
+      <h1>Login</h1>
+      <p>Access the motion camera dashboard</p>
     </div>
-
-    <div class="text-center small muted mt-3">
-      Passwords are hashed before being stored in the database.
+    <div class="userbar">
+      <a class="btn" href="/register">Create account</a>
     </div>
   </div>
-</div>
 {% endblock %}
 
+{% block content %}
+  <div class="card form-wrap">
+    <div class="card-h">
+      <h2>Sign in</h2>
+      
+    </div>
+
+    <div class="card-b">
+      <form class="form" method="post" action="/login">
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" required autocomplete="username"
+                 placeholder="mattjt">
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password"
+                 placeholder="••••••••">
+        </div>
+
+        <button class="btn primary" type="submit">Login</button>
+
+        <p class="muted" style="margin:0;">
+          Don’t have an account? <a href="/register">Register</a>
+        </p>
+      </form>
+    </div>
+  </div>
+{% endblock %}
